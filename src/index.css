@@ -13,3 +13,22 @@ body {
 
 /* wheel styles fallback */
 .wheel-sector { }
+
+/* flashy button */
+.neon-button{
+  box-shadow: 0 0 8px rgba(99,102,241,0.6), 0 0 20px rgba(99,102,241,0.15);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.neon-button:hover{ transform: translateY(-3px); box-shadow: 0 0 12px rgba(99,102,241,0.9), 0 0 30px rgba(99,102,241,0.25); }
+
+/* wheel glow */
+.wheel-glow{ box-shadow: 0 0 16px rgba(99,102,241,0.12), inset 0 0 30px rgba(0,0,0,0.4); }
+
+@keyframes pulse {
+  0%{ box-shadow: 0 0 6px rgba(99,102,241,0.2);} 
+  50%{ box-shadow: 0 0 16px rgba(99,102,241,0.45);} 
+  100%{ box-shadow: 0 0 6px rgba(99,102,241,0.2);} 
+}
+.pulse { animation: pulse 2s infinite; }
+
+.pointer-arrow { width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;border-bottom:16px solid #fff;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6)); }

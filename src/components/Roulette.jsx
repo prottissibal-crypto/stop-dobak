@@ -22,6 +22,8 @@ export default function Roulette(){
   const [message, setMessage] = useState('')
   const [spinning, setSpinning] = useState(false)
   const wheelRef = useRef(null)
+  const spinTimeoutRef = useRef(null)
+  const finalAngleRef = useRef(0)
 
   useEffect(()=>{
     if(chips <= 0){
@@ -69,67 +71,77 @@ export default function Roulette(){
     const targetAngle = (chosenIndex + 0.5) * sectorAngle
     const randomSpin = 720 + targetAngle + (Math.random()* (sectorAngle*0.6) - (sectorAngle*0.3))
 
-    if(wheelRef.current){
-      wheelRef.current.style.transition = 'transform 3s cubic-bezier(.17,.67,.22,1)'
-      wheelRef.current.style.transform = `rotate(${randomSpin}deg)`
+    const finishSpin = (chosenIndex, randomSpin, payout, win) => {
+      finalAngleRef.current = randomSpin % 360
+      // schedule cleanup
+      spinTimeoutRef.current = setTimeout(()=>{
+        if(wheelRef.current){
+          wheelRef.current.style.transition = 'none'
+          const normalized = finalAngleRef.current
+          wheelRef.current.style.transform = `rotate(${normalized}deg)`
+        }
+        setSpinning(false)
+      }, 3200)
+      // append history
+      const newChips = chips - bet + (win ? bet*2 : 0)
+      const entry = {game:'roulette',bet,choice,payout,newChips,time:Date.now(),win, outcome: (win? choice : (choice==='red'?'black':'red'))}
+      setHistory([...history, entry])
+      // update chips atomically
+      setChips(prev => (prev - bet + (win ? bet*2 : 0)))
     }
 
-    // psychological message sometimes
-    if(Math.random() < 0.5){
-      setMessage(psychMessages[Math.floor(Math.random()*psychMessages.length)])
-      setTimeout(()=>setMessage(''), 3000)
-    }
-
-    // after animation end, reset rotation and state
-    setTimeout(()=>{
+    const skipSpin = ()=>{
+      if(!spinning) return
+      if(spinTimeoutRef.current) clearTimeout(spinTimeoutRef.current)
+      // fast-forward wheel to final angle
       if(wheelRef.current){
-        // normalize rotation to angle within 0-360
-        wheelRef.current.style.transition = 'none'
-        const normalized = randomSpin % 360
-        wheelRef.current.style.transform = `rotate(${normalized}deg)`
+        wheelRef.current.style.transition = 'transform 0.5s ease-out'
+        wheelRef.current.style.transform = `rotate(${finalAngleRef.current}deg)`
       }
-      setSpinning(false)
-      // If chips depleted, auto route handled by effect
-    }, 3200)
-  }
+      // cleanup immediately
+      setTimeout(()=>{
+        if(wheelRef.current){
+          wheelRef.current.style.transition = 'none'
+        }
+        setSpinning(false)
+      }, 600)
+    }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <input type="number" value={bet} onChange={(e)=>setBet(Number(e.target.value))} className="bg-gray-900 px-3 py-2 rounded w-32" />
-        <select value={choice} onChange={(e)=>setChoice(e.target.value)} className="bg-gray-900 px-3 py-2 rounded">
-          <option value="red">Red</option>
-          <option value="black">Black</option>
-          <option value="green">Green (low odds)</option>
-        </select>
-        <button onClick={spin} disabled={spinning} className="px-4 py-2 bg-rose-600 rounded disabled:opacity-50">{spinning? '스핀 중...' : '스핀'}</button>
-      </div>
+    const spin = ()=>{
+      // if already spinning, treat as skip
+      if(spinning){ skipSpin(); return }
+      if(bet<=0 || bet>chips) return
+      setSpinning(true)
+      const p = getWinProbability()
 
-      <div className="flex flex-col md:flex-row items-center gap-6">
-        <div className="w-64 h-64 relative">
-          <div ref={wheelRef} className="w-full h-full rounded-full overflow-hidden border-4 border-gray-700" style={{transform:'rotate(0deg)', background: (()=>{
-            // build conic-gradient string from sectors
-            const angle = 360 / sectors.length
-            let grad = 'conic-gradient('
-            for(let i=0;i<sectors.length;i++){
-              const start = i * angle
-              const end = start + angle
-              const color = sectors[i].color === 'red' ? '#ef4444' : '#111827'
-              grad += `${color} ${start}deg ${end}deg${i===sectors.length-1?')':', '}`
-            }
-            return grad
-          })() }}>
-            {/* labels omitted for clarity; wheel uses conic-gradient for proper pie sectors */}
-          </div>
-          <div style={{position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)'}} className="pointer-events-none">
-            <div className="w-4 h-4 bg-white rounded-full"></div>
-          </div>
-        </div>
+      const rnd = Math.random()
+      const win = rnd < p
+      const outcomeColor = win ? choice : (choice==='red'?'black':'red')
 
-        <div className="flex-1">
-          <div className="p-3 bg-gray-800/30 rounded">현재 베팅: <b>{bet.toLocaleString()}</b></div>
-          <div className="mt-2 text-yellow-200">{message}</div>
-          <div className="mt-4 text-sm text-gray-300">룰렛은 장기적으로 하우스 우위가 작동합니다. 칩이 0이 되면 체험이 자동 종료됩니다.</div>
+      // compute payout net (player perspective): win -> +bet, lose -> -bet
+      const payout = win ? bet : -bet
+
+      // choose a random sector index for the outcome
+      const indices = sectors.map((s,i)=> s.color === outcomeColor ? i : -1).filter(i=>i>=0)
+      const chosenIndex = indices[Math.floor(Math.random()*indices.length)]
+      const sectorAngle = 360 / sectors.length
+      const targetAngle = (chosenIndex + 0.5) * sectorAngle
+      const randomSpin = 720 + targetAngle + (Math.random()* (sectorAngle*0.6) - (sectorAngle*0.3))
+
+      // animate
+      if(wheelRef.current){
+        wheelRef.current.style.transition = 'transform 3s cubic-bezier(.17,.67,.22,1)'
+        wheelRef.current.style.transform = `rotate(${randomSpin}deg)`
+      }
+
+      // psychological message sometimes
+      if(Math.random() < 0.5){
+        setMessage(psychMessages[Math.floor(Math.random()*psychMessages.length)])
+        setTimeout(()=>setMessage(''), 3000)
+      }
+
+      finishSpin(chosenIndex, randomSpin, payout, win)
+    }
         </div>
       </div>
     </div>
