@@ -8,15 +8,12 @@ const psychMessages = [
   '조금만 더 하면 본전을 찾을 수 있을지도 모릅니다.'
 ]
 
-const sectors = [
-  {color:'red', label:'Red'},
-  {color:'black', label:'Black'},
-  {color:'red', label:'Red'},
-  {color:'black', label:'Black'},
-  {color:'red', label:'Red'},
-  {color:'black', label:'Black'},
-  {color:'green', label:'Green'} // green low odds
-]
+// Only red and black sectors (alternating) for clear visual
+const SECTOR_COUNT = 12
+const sectors = Array.from({length: SECTOR_COUNT}).map((_,i)=>({
+  color: i % 2 === 0 ? 'red' : 'black',
+  label: i % 2 === 0 ? 'Red' : 'Black'
+}))
 
 export default function Roulette(){
   const {chips,setChips,history,setHistory,setRoute} = useContext(AppContext)
@@ -50,35 +47,27 @@ export default function Roulette(){
     setSpinning(true)
     const p = getWinProbability()
 
-    // Determine outcome by weighted random: green lower chance
+    // Determine outcome color (red/black) using win probability
     const rnd = Math.random()
     const win = rnd < p
-    // For color outcome, choose sector index accordingly
-    let outcomeColor = 'black'
-    if(win){
-      // if win, pick the chosen color most likely; if choice green, pick green
-      if(choice==='green') outcomeColor = (Math.random()<0.25? 'green': (Math.random()<0.5?'red':'black'))
-      else outcomeColor = choice
-    } else {
-      // lose: pick other color or green
-      if(choice==='green') outcomeColor = (Math.random()<0.6? 'red':'black')
-      else outcomeColor = (choice==='red'? 'black':'red')
-      // small chance of green
-      if(Math.random() < 0.05) outcomeColor = 'green'
-    }
+    let outcomeColor
+    if(win) outcomeColor = choice // if win, outcome matches player's choice
+    else outcomeColor = choice === 'red' ? 'black' : 'red'
 
-    // compute payout
-    const payout = (outcomeColor==='green') ? Math.round(bet * 14) : (outcomeColor===choice ? bet : -bet)
+    // compute payout: match -> +bet, else -bet
+    const payout = outcomeColor === choice ? bet : -bet
     const newChips = chips + payout
     const entry = {game:'roulette',bet,choice,payout,newChips,time:Date.now(),win: payout>0, outcome: outcomeColor}
     setHistory([...history, entry])
     setChips(newChips)
 
-    // animate wheel: find sector index for outcomeColor
+    // animate wheel: choose a random sector index having the outcomeColor
     const indices = sectors.map((s,i)=> s.color === outcomeColor ? i : -1).filter(i=>i>=0)
     const chosenIndex = indices[Math.floor(Math.random()*indices.length)]
     const sectorAngle = 360 / sectors.length
-    const randomSpin = 720 + (chosenIndex * sectorAngle) + (sectorAngle/2) + (Math.random()*sectorAngle - sectorAngle/2)
+    // spin several turns plus land at chosen sector center
+    const targetAngle = (chosenIndex + 0.5) * sectorAngle
+    const randomSpin = 720 + targetAngle + (Math.random()* (sectorAngle*0.6) - (sectorAngle*0.3))
 
     if(wheelRef.current){
       wheelRef.current.style.transition = 'transform 3s cubic-bezier(.17,.67,.22,1)'
@@ -94,7 +83,7 @@ export default function Roulette(){
     // after animation end, reset rotation and state
     setTimeout(()=>{
       if(wheelRef.current){
-        // normalize rotation
+        // normalize rotation to angle within 0-360
         wheelRef.current.style.transition = 'none'
         const normalized = randomSpin % 360
         wheelRef.current.style.transform = `rotate(${normalized}deg)`
@@ -118,18 +107,19 @@ export default function Roulette(){
 
       <div className="flex flex-col md:flex-row items-center gap-6">
         <div className="w-64 h-64 relative">
-          <div ref={wheelRef} className="w-full h-full rounded-full overflow-hidden border-4 border-gray-700" style={{transform:'rotate(0deg)'}}>
-            {sectors.map((s,i)=>{
-              const angle = 360 / sectors.length
-              const rotate = i * angle
-              return (
-                <div key={i} style={{position:'absolute',width:'50%',height:'50%',top:'25%',left:'50%',transformOrigin:'0% 100%',transform:`rotate(${rotate}deg) skewY(${90-angle}deg)`}}>
-                  <div style={{width:'200%',height:'200%',background:s.color==='green'? '#16a34a' : s.color==='red'? '#ef4444' : '#111827', transform:'skewY(0deg) rotate(0deg)', display:'flex', alignItems:'center', justifyContent:'flex-start', paddingLeft:8}}>
-                    <span className="text-sm font-bold text-white">{s.label}</span>
-                  </div>
-                </div>
-              )
-            })}
+          <div ref={wheelRef} className="w-full h-full rounded-full overflow-hidden border-4 border-gray-700" style={{transform:'rotate(0deg)', background: (()=>{
+            // build conic-gradient string from sectors
+            const angle = 360 / sectors.length
+            let grad = 'conic-gradient('
+            for(let i=0;i<sectors.length;i++){
+              const start = i * angle
+              const end = start + angle
+              const color = sectors[i].color === 'red' ? '#ef4444' : '#111827'
+              grad += `${color} ${start}deg ${end}deg${i===sectors.length-1?')':', '}`
+            }
+            return grad
+          })() }}>
+            {/* labels omitted for clarity; wheel uses conic-gradient for proper pie sectors */}
           </div>
           <div style={{position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)'}} className="pointer-events-none">
             <div className="w-4 h-4 bg-white rounded-full"></div>
